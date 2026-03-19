@@ -1,0 +1,72 @@
+site_name: MaestroSDK
+site_url: https://rmkohlman.github.io/MaestroSDK/
+site_description: Shared SDK packages for the DevOpsMaestro ecosystem
+site_author: Robert Kohlman
+repo_name: rmkohlman/MaestroSDK
+repo_url: https://github.com/rmkohlman/MaestroSDK
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - tags
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rmkohlman/MaestroSDK
+
+nav:
+  - Home: index.md
+  - Packages:
+    - colors: colors.md
+    - render: render.md
+    - resource: resource.md
+    - paths: paths.md
+  - API Reference: api-reference.md
