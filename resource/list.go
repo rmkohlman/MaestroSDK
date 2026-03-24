@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -83,6 +84,19 @@ func BuildList(ctx Context, resources []Resource) (*ResourceList, error) {
 	return list, nil
 }
 
+// detectName extracts the metadata.name field from YAML data without full parsing.
+func detectName(data []byte) string {
+	var header struct {
+		Metadata struct {
+			Name string `yaml:"name"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &header); err != nil || header.Metadata.Name == "" {
+		return "unknown"
+	}
+	return header.Metadata.Name
+}
+
 // ApplyList parses a List YAML document and applies each item via the
 // registered handler for its kind, continuing on error (kubectl precedent).
 // Returns all successfully applied resources and a combined error summary.
@@ -97,39 +111,42 @@ func ApplyList(ctx Context, data []byte) ([]Resource, error) {
 	}
 
 	var applied []Resource
-	var errors []error
+	var errs []error
 
 	for i, item := range list.Items {
 		// Marshal item back to YAML for handler consumption
 		itemBytes, err := yaml.Marshal(item)
 		if err != nil {
-			errors = append(errors, fmt.Errorf("item %d: failed to marshal: %w", i, err))
+			errs = append(errs, fmt.Errorf("item %d: failed to marshal: %w", i, err))
 			continue
 		}
 
 		kind, err := DetectKind(itemBytes)
 		if err != nil {
-			errors = append(errors, fmt.Errorf("item %d: %w", i, err))
+			errs = append(errs, fmt.Errorf("item %d: %w", i, err))
 			continue
 		}
 
+		name := detectName(itemBytes)
+
 		handler, err := MustGetHandler(kind)
 		if err != nil {
-			errors = append(errors, fmt.Errorf("item %d: %w", i, err))
+			errs = append(errs, fmt.Errorf("item %d (%s %q): %w", i, kind, name, err))
 			continue
 		}
 
 		res, err := handler.Apply(ctx, itemBytes)
 		if err != nil {
-			errors = append(errors, fmt.Errorf("item %d (%s): %w", i, kind, err))
+			errs = append(errs, fmt.Errorf("item %d (%s %q): %w", i, kind, name, err))
 			continue
 		}
 
 		applied = append(applied, res)
 	}
 
-	if len(errors) > 0 {
-		return applied, fmt.Errorf("%d of %d items failed to apply", len(errors), len(list.Items))
+	if len(errs) > 0 {
+		return applied, fmt.Errorf("%d of %d items failed to apply:\n%w",
+			len(errs), len(list.Items), errors.Join(errs...))
 	}
 
 	return applied, nil

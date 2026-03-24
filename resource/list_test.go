@@ -487,6 +487,305 @@ items:
 // TestApplyList_InvalidItem
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Issue #152 — ApplyList must surface per-item error details
+//
+// These tests are written FIRST (TDD Phase 2) and are expected to FAIL until
+// ApplyList is fixed to join the individual errors instead of discarding them.
+// ---------------------------------------------------------------------------
+
+// mockFailingHandler is a Handler that returns a configurable error for
+// specific resource names so we can precisely control which items fail and
+// verify the error message includes kind, name, and reason.
+type mockFailingHandler struct {
+	kind      string
+	failNames map[string]string // name -> reason to fail
+	resources map[string]*mockResource
+}
+
+func newMockFailingHandler(kind string, failNames map[string]string) *mockFailingHandler {
+	return &mockFailingHandler{
+		kind:      kind,
+		failNames: failNames,
+		resources: make(map[string]*mockResource),
+	}
+}
+
+func (h *mockFailingHandler) Kind() string { return h.kind }
+
+func (h *mockFailingHandler) Apply(ctx Context, data []byte) (Resource, error) {
+	// Extract resource name from YAML so we can look it up in failNames.
+	var header struct {
+		Metadata struct {
+			Name string `yaml:"name"`
+		} `yaml:"metadata"`
+	}
+	_ = yaml.Unmarshal(data, &header)
+	name := header.Metadata.Name
+	if name == "" {
+		name = "unknown"
+	}
+
+	if reason, shouldFail := h.failNames[name]; shouldFail {
+		return nil, fmt.Errorf("%s", reason)
+	}
+
+	res := &mockResource{kind: h.kind, name: name}
+	h.resources[name] = res
+	return res, nil
+}
+
+func (h *mockFailingHandler) Get(ctx Context, name string) (Resource, error) {
+	if res, ok := h.resources[name]; ok {
+		return res, nil
+	}
+	return nil, nil
+}
+
+func (h *mockFailingHandler) List(ctx Context) ([]Resource, error) {
+	result := make([]Resource, 0, len(h.resources))
+	for _, res := range h.resources {
+		result = append(result, res)
+	}
+	return result, nil
+}
+
+func (h *mockFailingHandler) Delete(ctx Context, name string) error {
+	delete(h.resources, name)
+	return nil
+}
+
+func (h *mockFailingHandler) ToYAML(res Resource) ([]byte, error) {
+	return []byte("kind: " + res.GetKind() + "\nname: " + res.GetName()), nil
+}
+
+// TestApplyList_ErrorIncludesResourceKind verifies that when an item fails to
+// apply, the returned error message includes the resource kind of the failed item.
+//
+// BUG (#152): ApplyList currently returns only "N of M items failed to apply"
+// without including any per-item details. This test FAILS until fixed.
+func TestApplyList_ErrorIncludesResourceKind(t *testing.T) {
+	ClearRegistry()
+	defer ClearRegistry()
+
+	Register(newMockFailingHandler("Ecosystem", map[string]string{
+		"bad-eco": "database connection refused",
+	}))
+
+	ctx := Context{}
+	listYAML := []byte(`apiVersion: devopsmaestro.io/v1
+kind: List
+metadata: {}
+items:
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: good-eco
+    spec: {}
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: bad-eco
+    spec: {}
+`)
+
+	_, err := ApplyList(ctx, listYAML)
+
+	require.Error(t, err, "ApplyList should return an error when an item fails")
+	assert.Contains(t, err.Error(), "Ecosystem",
+		"error message must include the resource kind of the failed item (got: %q)", err.Error())
+}
+
+// TestApplyList_ErrorIncludesResourceName verifies that when an item fails to
+// apply, the returned error message includes the resource name of the failed item.
+//
+// BUG (#152): ApplyList currently discards all per-item errors. This test FAILS
+// until fixed.
+func TestApplyList_ErrorIncludesResourceName(t *testing.T) {
+	ClearRegistry()
+	defer ClearRegistry()
+
+	Register(newMockFailingHandler("Ecosystem", map[string]string{
+		"eco-that-fails": "unique constraint violation",
+	}))
+
+	ctx := Context{}
+	listYAML := []byte(`apiVersion: devopsmaestro.io/v1
+kind: List
+metadata: {}
+items:
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-that-succeeds
+    spec: {}
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-that-fails
+    spec: {}
+`)
+
+	_, err := ApplyList(ctx, listYAML)
+
+	require.Error(t, err, "ApplyList should return an error when an item fails")
+	assert.Contains(t, err.Error(), "eco-that-fails",
+		"error message must include the resource name of the failed item (got: %q)", err.Error())
+}
+
+// TestApplyList_ErrorIncludesFailureReason verifies that when an item fails to
+// apply, the returned error message includes the underlying failure reason.
+//
+// BUG (#152): ApplyList currently swallows the per-item error reason.
+// This test FAILS until fixed.
+func TestApplyList_ErrorIncludesFailureReason(t *testing.T) {
+	ClearRegistry()
+	defer ClearRegistry()
+
+	const failureReason = "workspace not found for app 'foo'"
+
+	Register(newMockFailingHandler("App", map[string]string{
+		"app-broken": failureReason,
+	}))
+
+	ctx := Context{}
+	listYAML := []byte(`apiVersion: devopsmaestro.io/v1
+kind: List
+metadata: {}
+items:
+  - apiVersion: devopsmaestro.io/v1
+    kind: App
+    metadata:
+      name: app-ok
+    spec: {}
+  - apiVersion: devopsmaestro.io/v1
+    kind: App
+    metadata:
+      name: app-broken
+    spec: {}
+`)
+
+	_, err := ApplyList(ctx, listYAML)
+
+	require.Error(t, err, "ApplyList should return an error when an item fails")
+	assert.Contains(t, err.Error(), failureReason,
+		"error message must include the per-item failure reason (got: %q)", err.Error())
+}
+
+// TestApplyList_ErrorIncludesAllFailedItems verifies that when MULTIPLE items
+// fail, the returned error message includes details for ALL failed items — not
+// just the first one.
+//
+// BUG (#152): ApplyList discards the errors slice entirely. This test FAILS
+// until fixed.
+func TestApplyList_ErrorIncludesAllFailedItems(t *testing.T) {
+	ClearRegistry()
+	defer ClearRegistry()
+
+	Register(newMockFailingHandler("Ecosystem", map[string]string{
+		"eco-fail-1": "connection timeout",
+		"eco-fail-2": "invalid configuration",
+	}))
+
+	ctx := Context{}
+	listYAML := []byte(`apiVersion: devopsmaestro.io/v1
+kind: List
+metadata: {}
+items:
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-ok
+    spec: {}
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-fail-1
+    spec: {}
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-fail-2
+    spec: {}
+`)
+
+	resources, err := ApplyList(ctx, listYAML)
+
+	require.Error(t, err, "ApplyList should return an error when items fail")
+
+	// Successful item must still be applied
+	assert.Len(t, resources, 1, "the 1 successful item should still be returned")
+
+	// Both failure reasons must appear in the combined error
+	assert.Contains(t, err.Error(), "eco-fail-1",
+		"error must include name of first failed item (got: %q)", err.Error())
+	assert.Contains(t, err.Error(), "eco-fail-2",
+		"error must include name of second failed item (got: %q)", err.Error())
+	assert.Contains(t, err.Error(), "connection timeout",
+		"error must include reason for first failed item (got: %q)", err.Error())
+	assert.Contains(t, err.Error(), "invalid configuration",
+		"error must include reason for second failed item (got: %q)", err.Error())
+}
+
+// TestApplyList_SuccessfulItemsAppliedDespitePartialFailure verifies that
+// successful items in a mixed List are applied correctly even when other items
+// fail — and that the returned []Resource slice contains only the successes.
+//
+// This tests the "partial success" contract described in issue #152.
+func TestApplyList_SuccessfulItemsAppliedDespitePartialFailure(t *testing.T) {
+	ClearRegistry()
+	defer ClearRegistry()
+
+	Register(newMockFailingHandler("Ecosystem", map[string]string{
+		"eco-bad": "apply failed: duplicate key",
+	}))
+
+	ctx := Context{}
+	listYAML := []byte(`apiVersion: devopsmaestro.io/v1
+kind: List
+metadata: {}
+items:
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-good-1
+    spec: {}
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-bad
+    spec: {}
+  - apiVersion: devopsmaestro.io/v1
+    kind: Ecosystem
+    metadata:
+      name: eco-good-2
+    spec: {}
+`)
+
+	resources, err := ApplyList(ctx, listYAML)
+
+	// Error must exist (partial failure)
+	require.Error(t, err, "ApplyList should return error on partial failure")
+
+	// The 2 successful items must be in the returned slice
+	assert.Len(t, resources, 2,
+		"ApplyList should return the 2 successfully applied resources")
+
+	// Both good ecosystems must be present in the result
+	names := make([]string, 0, len(resources))
+	for _, r := range resources {
+		names = append(names, r.GetName())
+	}
+	assert.Contains(t, names, "eco-good-1",
+		"eco-good-1 should be in successfully applied resources")
+	assert.Contains(t, names, "eco-good-2",
+		"eco-good-2 should be in successfully applied resources")
+
+	// Error must mention the failed item
+	assert.Contains(t, err.Error(), "eco-bad",
+		"error must name the failed resource (got: %q)", err.Error())
+}
+
 // TestApplyList_InvalidItem verifies that an item missing the 'kind' field
 // produces an error but processing continues for remaining items.
 func TestApplyList_InvalidItem(t *testing.T) {
