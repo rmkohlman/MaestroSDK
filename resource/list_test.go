@@ -67,8 +67,8 @@ func TestDependencyOrder(t *testing.T) {
 	expectedOrder := []string{
 		"Ecosystem",
 		"Domain",
-		"App",
 		"GitRepo",
+		"App",
 		"Registry",
 		"Credential",
 		"Workspace",
@@ -107,6 +107,8 @@ func TestDependencyOrder_WorkspacesAfterApps(t *testing.T) {
 		"Ecosystem must come before Domain")
 	assert.Less(t, kindIndex("Domain"), kindIndex("App"),
 		"Domain must come before App")
+	assert.Less(t, kindIndex("GitRepo"), kindIndex("App"),
+		"GitRepo must come before App (apps reference git repos by name)")
 	assert.Less(t, kindIndex("App"), kindIndex("Workspace"),
 		"App must come before Workspace")
 }

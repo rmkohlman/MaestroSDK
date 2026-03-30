@@ -24,8 +24,8 @@ type ResourceList struct {
 var DependencyOrder = []string{
 	"Ecosystem",
 	"Domain",
-	"App",
 	"GitRepo",
+	"App",
 	"Registry",
 	"Credential",
 	"Workspace",
