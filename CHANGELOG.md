@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.1.4] - 2026-04-06
+
 ### Fixed
 
-- Fix `ApplyList` error reporting — now includes resource kind, name, and failure reason for each failed item instead of aggregating by count only; returns structured per-item error output (`resource/list.go`) (#152)
+- fix: swap Credential/Workspace in DependencyOrder — credentials now apply after workspaces, fixing restore of workspace-scoped credentials (`resource/list.go`) (#195)
