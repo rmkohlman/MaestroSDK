@@ -139,6 +139,4 @@ func (r *CompactRenderer) RenderMessageWithContext(ctx context.Context, w io.Wri
 	return r.ColoredRenderer.RenderMessageWithContext(ctx, w, msg)
 }
 
-func init() {
-	Register(NewCompactRenderer())
-}
+// Note: Registration is handled centrally by factory.go init()

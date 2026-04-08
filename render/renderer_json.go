@@ -94,6 +94,4 @@ func (r *JSONRenderer) RenderMessageWithContext(ctx context.Context, w io.Writer
 	return encoder.Encode(data)
 }
 
-func init() {
-	Register(NewJSONRenderer())
-}
+// Note: Registration is handled centrally by factory.go init()

@@ -309,6 +309,4 @@ func (r *ColoredRenderer) RenderMessageWithContext(ctx context.Context, w io.Wri
 	return nil
 }
 
-func init() {
-	Register(NewColoredRenderer())
-}
+// Note: Registration is handled centrally by factory.go init()

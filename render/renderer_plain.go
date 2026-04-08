@@ -176,6 +176,4 @@ func (r *PlainRenderer) RenderMessageWithContext(ctx context.Context, w io.Write
 	return nil
 }
 
-func init() {
-	Register(NewPlainRenderer())
-}
+// Note: Registration is handled centrally by factory.go init()

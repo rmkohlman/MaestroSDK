@@ -90,6 +90,4 @@ func (r *YAMLRenderer) RenderMessageWithContext(ctx context.Context, w io.Writer
 	return encoder.Encode(data)
 }
 
-func init() {
-	Register(NewYAMLRenderer())
-}
+// Note: Registration is handled centrally by factory.go init()
