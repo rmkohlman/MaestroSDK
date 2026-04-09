@@ -34,6 +34,7 @@ func (f *RendererFactory) registerBuiltins() {
 	f.creators[RendererColored] = func() Renderer { return NewColoredRenderer() }
 	f.creators[RendererTable] = func() Renderer { return NewTableRenderer() }
 	f.creators[RendererCompact] = func() Renderer { return NewCompactRenderer() }
+	f.creators[RendererPretty] = func() Renderer { return NewPrettyRenderer() }
 }
 
 // Create constructs a new renderer by name. Returns nil if the name

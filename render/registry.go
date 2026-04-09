@@ -82,30 +82,49 @@ func GetWriter() io.Writer {
 	return defaultWriter
 }
 
+// rendererAliases maps deprecated renderer names to their canonical replacements.
+// "colored" is a deprecated alias for "table" (per CLI architecture review).
+var rendererAliases = map[RendererName]RendererName{
+	RendererColored: RendererTable,
+}
+
 // ResolveRenderer determines which renderer to use based on:
 // 1. Explicit override (from flag)
 // 2. Environment variable DVM_RENDER
 // 3. Global config default
 func ResolveRenderer(override string) Renderer {
 	var name RendererName
+	isExplicit := false
 
 	// Priority 1: Explicit override (from -r flag)
 	if override != "" {
 		name = RendererName(override)
+		isExplicit = true
 	} else if envRender := os.Getenv("DVM_RENDER"); envRender != "" {
 		// Priority 2: Environment variable
 		name = RendererName(envRender)
+		isExplicit = true
 	} else {
 		// Priority 3: Global config default
 		cfg := GetConfig()
 		name = cfg.Default
 	}
 
-	// Check NO_COLOR environment variable
+	// Check NO_COLOR environment variable (before alias resolution so
+	// deprecated names like "colored" still respect NO_COLOR)
 	if os.Getenv("NO_COLOR") != "" {
-		// Force plain renderer if NO_COLOR is set
-		if name == RendererColored || name == RendererCompact {
+		// Force plain renderer if NO_COLOR is set for color-capable renderers
+		if name == RendererColored || name == RendererCompact || name == RendererTable || name == RendererPretty {
 			name = RendererPlain
+		}
+	}
+
+	// Apply deprecated aliases only for explicit overrides (flag or env var).
+	// The internal config default (e.g. RendererColored) stays as-is so the
+	// ColoredRenderer continues to be used for message rendering, etc.
+	if isExplicit {
+		if canonical, ok := rendererAliases[name]; ok {
+			name = canonical
 		}
 	}
 

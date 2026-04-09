@@ -74,6 +74,7 @@ const (
 	RendererPlain   RendererName = "plain"
 	RendererTable   RendererName = "table"
 	RendererCompact RendererName = "compact"
+	RendererPretty  RendererName = "pretty"
 )
 
 // Options configures how data should be rendered.

@@ -12,15 +12,16 @@ func TestNewRendererFactory(t *testing.T) {
 	f := NewRendererFactory()
 	assert.NotNil(t, f)
 
-	// Should have all 6 built-in renderers
+	// Should have all 7 built-in renderers
 	names := f.Names()
-	assert.Len(t, names, 6)
+	assert.Len(t, names, 7)
 	assert.Contains(t, names, RendererJSON)
 	assert.Contains(t, names, RendererYAML)
 	assert.Contains(t, names, RendererPlain)
 	assert.Contains(t, names, RendererColored)
 	assert.Contains(t, names, RendererTable)
 	assert.Contains(t, names, RendererCompact)
+	assert.Contains(t, names, RendererPretty)
 }
 
 func TestRendererFactory_Create(t *testing.T) {

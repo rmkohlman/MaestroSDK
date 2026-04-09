@@ -6,16 +6,18 @@ import (
 	"io"
 )
 
-// TableRenderer focuses on clean table output.
-// It suppresses messages and other decorations, outputting only tables.
-// Useful for piping to other tools.
+// TableRenderer focuses on clean table output with bordered formatting.
+// It uses PrettyRenderer for TableData (producing box-drawing bordered output)
+// and suppresses messages and other decorations.
 type TableRenderer struct {
+	pretty  *PrettyRenderer
 	colored *ColoredRenderer
 }
 
 // NewTableRenderer creates a new table-focused renderer
 func NewTableRenderer() *TableRenderer {
 	return &TableRenderer{
+		pretty:  NewPrettyRenderer(),
 		colored: NewColoredRenderer(),
 	}
 }
@@ -47,7 +49,7 @@ func (r *TableRenderer) RenderWithContext(ctx context.Context, w io.Writer, data
 	// Render based on data type - only tables get output
 	switch v := data.(type) {
 	case TableData:
-		return r.colored.renderTableWithStyles(w, v, r.colored.getStyles(ctx))
+		return r.pretty.renderBorderedTable(ctx, w, v)
 	case KeyValueData:
 		// Render key-value as simple table
 		return r.renderKeyValueAsTable(w, v)
