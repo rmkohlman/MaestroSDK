@@ -1,8 +1,6 @@
 # paths
 
-Import path: `github.com/rmkohlman/MaestroSDK/paths`
-
-The `paths` package provides a centralized, testable path configuration for all DevOpsMaestro tools (`dvm`, `nvp`, `dvt`). It replaces scattered hardcoded path constructions with a single `PathConfig` struct whose methods return deterministic paths derived from a home directory.
+The `paths` package provides a centralized, testable path configuration for all DevOpsMaestro tools (`dvm`, `nvp`, `dvt`). It replaces scattered hardcoded path constructions with a single `PathConfig` whose methods return deterministic paths derived from a home directory.
 
 **Design goals:**
 
@@ -13,15 +11,6 @@ The `paths` package provides a centralized, testable path configuration for all 
 ---
 
 ## Constants
-
-```go
-const (
-    DVMDirName   = ".devopsmaestro"
-    NVPDirName   = ".nvp"
-    DVTDirName   = ".dvt"
-    DatabaseFile = "devopsmaestro.db"
-)
-```
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
@@ -34,38 +23,13 @@ const (
 
 ## PathConfig
 
-`PathConfig` is the central struct. It holds a resolved home directory and exposes methods that return fully-qualified paths for every well-known location in the DevOpsMaestro filesystem layout. The struct is immutable — `homeDir` is set once at construction and never changes.
+`PathConfig` is the central type. It holds a resolved home directory and exposes methods that return fully-qualified paths for every well-known location in the DevOpsMaestro filesystem layout. The struct is immutable — `homeDir` is set once at construction and never changes.
 
 ### Constructors
 
-#### `New`
+**`New(homeDir string)`** — Creates a `PathConfig` rooted at the given home directory. Has no OS dependencies, making it ideal for tests. Panics if `homeDir` is empty, because that indicates a programming error.
 
-```go
-func New(homeDir string) *PathConfig
-```
-
-Creates a `PathConfig` rooted at the given home directory. Has no OS dependencies, making it ideal for tests.
-
-Panics if `homeDir` is empty, because that indicates a programming error — every code path must supply a valid home directory.
-
-```go
-pc := paths.New("/tmp/fakehome")
-```
-
-#### `Default`
-
-```go
-func Default() (*PathConfig, error)
-```
-
-Creates a `PathConfig` using the current user's home directory returned by `os.UserHomeDir()`. This is the standard constructor for production code.
-
-```go
-pc, err := paths.Default()
-if err != nil {
-    // handle: unable to determine home directory
-}
-```
+**`Default()`** — Creates a `PathConfig` using the current user's home directory. This is the standard constructor for production code.
 
 ---
 
@@ -89,31 +53,31 @@ if err != nil {
 
 ### Workspace
 
-| Method | Signature | Returns |
-|--------|-----------|---------|
-| `WorkspacesDir()` | `() string` | `{root}/workspaces` |
-| `WorkspacePath()` | `(slug string) string` | `{root}/workspaces/{slug}` |
-| `WorkspaceRepoPath()` | `(slug string) string` | `{root}/workspaces/{slug}/repo` |
-| `WorkspaceVolumePath()` | `(slug string) string` | `{root}/workspaces/{slug}/volume` |
-| `WorkspaceConfigPath()` | `(slug string) string` | `{root}/workspaces/{slug}/.dvm` |
+| Method | Returns |
+|--------|---------|
+| `WorkspacesDir()` | `{root}/workspaces` |
+| `WorkspacePath(slug)` | `{root}/workspaces/{slug}` |
+| `WorkspaceRepoPath(slug)` | `{root}/workspaces/{slug}/repo` |
+| `WorkspaceVolumePath(slug)` | `{root}/workspaces/{slug}/volume` |
+| `WorkspaceConfigPath(slug)` | `{root}/workspaces/{slug}/.dvm` |
 
 ### Git and Build
 
-| Method | Signature | Returns |
-|--------|-----------|---------|
-| `ReposDir()` | `() string` | `{root}/repos` |
-| `BuildStagingDir()` | `(appName string) string` | `{root}/build-staging/{appName}` |
+| Method | Returns |
+|--------|---------|
+| `ReposDir()` | `{root}/repos` |
+| `BuildStagingDir(appName)` | `{root}/build-staging/{appName}` |
 
 ### Registry
 
-| Method | Signature | Returns |
-|--------|-----------|---------|
-| `RegistryDir()` | `(name string) string` | `{root}/registries/{name}` |
-| `RegistryStorage()` | `() string` | `{root}/registry` |
-| `AthensStorage()` | `() string` | `{root}/athens` |
-| `VerdaccioStorage()` | `() string` | `{root}/verdaccio` |
-| `DevpiStorage()` | `() string` | `{root}/devpi` |
-| `SquidDir()` | `() string` | `{root}/squid` |
+| Method | Returns |
+|--------|---------|
+| `RegistryDir(name)` | `{root}/registries/{name}` |
+| `RegistryStorage()` | `{root}/registry` |
+| `AthensStorage()` | `{root}/athens` |
+| `VerdaccioStorage()` | `{root}/verdaccio` |
+| `DevpiStorage()` | `{root}/devpi` |
+| `SquidDir()` | `{root}/squid` |
 
 ### NVP
 
@@ -138,56 +102,4 @@ if err != nil {
 
 ### Helper
 
-#### `DatabasePathTilde`
-
-```go
-func (p *PathConfig) DatabasePathTilde() string
-```
-
-Returns the tilde-notation string `~/.devopsmaestro/devopsmaestro.db`. This is **not** a real filesystem path — it is intended as a default config value in viper configurations for `nvp` and `dvt`, which expand the tilde at runtime.
-
-```go
-pc, _ := paths.Default()
-viperDefault := pc.DatabasePathTilde() // "~/.devopsmaestro/devopsmaestro.db"
-```
-
----
-
-## Usage Examples
-
-### Production code
-
-```go
-import "github.com/rmkohlman/MaestroSDK/paths"
-
-pc, err := paths.Default()
-if err != nil {
-    return fmt.Errorf("cannot resolve paths: %w", err)
-}
-
-dbPath  := pc.Database()             // e.g. /home/user/.devopsmaestro/devopsmaestro.db
-wsPath  := pc.WorkspacePath("dev")  // e.g. /home/user/.devopsmaestro/workspaces/dev
-nvpRoot := pc.NVPRoot()              // e.g. /home/user/.nvp
-```
-
-### Tests
-
-```go
-import "github.com/rmkohlman/MaestroSDK/paths"
-
-pc := paths.New("/tmp/fakehome")
-
-dbPath := pc.Database()
-// "/tmp/fakehome/.devopsmaestro/devopsmaestro.db" — no OS dependency
-```
-
-### Using constants without a full path
-
-```go
-import "github.com/rmkohlman/MaestroSDK/paths"
-
-// Skip the devopsmaestro directory when walking the filesystem
-if entry.Name() == paths.DVMDirName {
-    return filepath.SkipDir
-}
-```
+**`DatabasePathTilde()`** — Returns the tilde-notation string `~/.devopsmaestro/devopsmaestro.db`. This is **not** a real filesystem path — it is intended as a default config value for tools that expand the tilde at runtime.

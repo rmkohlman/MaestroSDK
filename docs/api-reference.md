@@ -6,8 +6,6 @@ Quick-lookup for all exported symbols in MaestroSDK. Each entry links to its det
 
 ## colors
 
-Import: `github.com/rmkohlman/MaestroSDK/colors`
-
 Full documentation: [colors](colors.md)
 
 ### Interface
@@ -20,37 +18,35 @@ Full documentation: [colors](colors.md)
 
 | Symbol | Kind | Description |
 |--------|------|-------------|
-| `ThemeColorProvider` | struct | Wraps a `palette.Palette`; returned by `NewThemeColorProvider` |
+| `ThemeColorProvider` | struct | Wraps a palette; returned by `NewThemeColorProvider` |
 | `NoColorProvider` | struct | Returns empty strings for all color methods; used when `NO_COLOR` is set |
-| `PaletteAdapter` | struct | Adapts an external palette-like struct to `ColorProvider` via reflection |
+| `PaletteAdapter` | struct | Adapts an external palette-like struct to `ColorProvider` |
 | `NoProviderError` | struct | Error type returned when no `ColorProvider` is found in context |
 
 ### Functions
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `NewThemeColorProvider` | `(p *palette.Palette) *ThemeColorProvider` | Creates a `ColorProvider` backed by a `MaestroPalette` palette |
-| `NewNoColorProvider` | `() *NoColorProvider` | Creates a no-op `ColorProvider` |
-| `NewPaletteAdapter` | `(src any) (*PaletteAdapter, error)` | Creates a `PaletteAdapter` from any struct with matching color fields |
-| `DefaultProvider` | `() ColorProvider` | Returns a built-in default `ColorProvider` (suitable as a fallback) |
-| `DefaultNoColorProvider` | `() *NoColorProvider` | Returns a package-level `NoColorProvider` singleton |
-| `WithColorProvider` | `(ctx context.Context, p ColorProvider) context.Context` | Injects `ColorProvider` into a `context.Context` |
-| `FromContext` | `(ctx context.Context) (ColorProvider, error)` | Retrieves `ColorProvider` from context; returns `NoProviderError` if absent |
-| `FromContextOrDefault` | `(ctx context.Context) ColorProvider` | Retrieves `ColorProvider` from context, falling back to `DefaultProvider()` |
-| `InitColorProviderForCommand` | `(ctx context.Context, pp PaletteProvider, noColor bool) (context.Context, error)` | Resolves and injects `ColorProvider` for a CLI command |
-| `NewMockProvider` | `() *MockProvider` | Creates a `MockProvider` pre-filled with recognizable test colors |
+| Symbol | Description |
+|--------|-------------|
+| `NewThemeColorProvider` | Creates a `ColorProvider` backed by a `MaestroPalette` palette |
+| `NewNoColorProvider` | Creates a no-op `ColorProvider` |
+| `NewPaletteAdapter` | Creates a `PaletteAdapter` from any struct with matching color fields |
+| `DefaultProvider` | Returns a built-in default `ColorProvider` (suitable as a fallback) |
+| `DefaultNoColorProvider` | Returns a package-level `NoColorProvider` singleton |
+| `WithColorProvider` | Injects `ColorProvider` into a `context.Context` |
+| `FromContext` | Retrieves `ColorProvider` from context; returns `NoProviderError` if absent |
+| `FromContextOrDefault` | Retrieves `ColorProvider` from context, falling back to `DefaultProvider()` |
+| `InitColorProviderForCommand` | Resolves and injects `ColorProvider` for a CLI command |
+| `NewMockProvider` | Creates a `MockProvider` pre-filled with recognizable test colors |
 
-### Interfaces (supporting)
+### Supporting Interfaces
 
 | Symbol | Kind | Description |
 |--------|------|-------------|
-| `PaletteProvider` | interface | Single method `GetPalette() (*palette.Palette, error)`; implemented by palette loaders |
+| `PaletteProvider` | interface | Single method `GetPalette()`; implemented by palette loaders |
 
 ---
 
 ## render
-
-Import: `github.com/rmkohlman/MaestroSDK/render`
 
 Full documentation: [render](render.md)
 
@@ -58,11 +54,11 @@ Full documentation: [render](render.md)
 
 | Symbol | Kind | Description |
 |--------|------|-------------|
-| `RenderType` | `string` type | Hints the renderer about data structure (`auto`, `keyvalue`, `table`, `list`, `detail`, `raw`, `progress`) |
-| `RendererName` | `string` type | Identifies a renderer (`json`, `yaml`, `colored`, `plain`, `table`, `compact`) |
+| `RenderType` | string type | Hints the renderer about data structure (`auto`, `keyvalue`, `table`, `list`, `detail`, `raw`, `progress`) |
+| `RendererName` | string type | Identifies a renderer (`json`, `yaml`, `colored`, `plain`, `table`, `compact`) |
 | `Options` | struct | Rendering configuration: `Type`, `Title`, `Headers`, `Empty`, `EmptyMessage`, `EmptyHints`, `Verbose`, `Wide` |
-| `Config` | struct | Global renderer configuration: `Default RendererName`, `Writer io.Writer` |
-| `TableData` | struct | Pre-formatted table: `Headers []string`, `Rows [][]string` |
+| `Config` | struct | Global renderer configuration: `Default RendererName`, `Writer` |
+| `TableData` | struct | Pre-formatted table: `Headers`, `Rows` |
 | `Renderer` | interface | Core interface: `Render`, `RenderWithContext`, `RenderMessage`, `RenderMessageWithContext`, `Name` |
 
 ### RenderType Constants
@@ -97,45 +93,43 @@ Full documentation: [render](render.md)
 | `JSONRenderer` | struct | Marshals data to JSON |
 | `YAMLRenderer` | struct | Marshals data to YAML |
 | `TableRenderer` | struct | Tabular output; `RenderMessage` is a deliberate no-op |
-| `CompactRenderer` | struct | Embeds `*ColoredRenderer`; emits compact one-liner output |
+| `CompactRenderer` | struct | Compact variant of `ColoredRenderer` |
 
 ### Output Functions (primary API)
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `Output` | `(data any, opts Options) error` | Renders data using the resolved renderer |
-| `OutputWithContext` | `(ctx context.Context, data any, opts Options) error` | Renders data; passes context to renderer for `ColorProvider` access |
-| `OutputWithContextAndRenderer` | `(ctx context.Context, data any, opts Options, rendererName string) error` | Renders data with an explicit renderer override |
-| `OutputWith` | `(ctx context.Context, data any, opts Options, rendererName string, w io.Writer) error` | Renders data to a specific `io.Writer` with a renderer override |
-| `Message` | `(msg string) error` | Renders a plain message string using the resolved renderer |
-| `MessageWithContext` | `(ctx context.Context, msg string) error` | Renders a plain message string using the context-aware renderer |
+| Symbol | Description |
+|--------|-------------|
+| `Output` | Renders data using the resolved renderer |
+| `OutputWithContext` | Renders data; passes context to renderer for `ColorProvider` access |
+| `OutputWithContextAndRenderer` | Renders data with an explicit renderer override |
+| `OutputWith` | Renders data to a specific writer with a renderer override |
+| `Message` | Renders a plain message string using the resolved renderer |
+| `MessageWithContext` | Renders a plain message string using the context-aware renderer |
 
 ### Registry Functions
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `Register` | `(r Renderer)` | Registers a renderer; called from each renderer's `init()` |
-| `ResolveRenderer` | `(name string) Renderer` | Returns the named renderer, applying `NO_COLOR` fallback logic |
-| `SetDefault` | `(name RendererName)` | Sets the global default renderer |
-| `SetConfig` | `(cfg Config)` | Sets global renderer config (default name + writer) |
-| `GetWriter` | `() io.Writer` | Returns the active output writer (defaults to `os.Stdout`) |
+| Symbol | Description |
+|--------|-------------|
+| `Register` | Registers a renderer |
+| `ResolveRenderer` | Returns the named renderer, applying `NO_COLOR` fallback logic |
+| `SetDefault` | Sets the global default renderer |
+| `SetConfig` | Sets global renderer config |
+| `GetWriter` | Returns the active output writer (defaults to stdout) |
 
 ### Convenience Constructors
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `NewColoredRenderer` | `(w io.Writer) *ColoredRenderer` | Creates a `ColoredRenderer` writing to `w` |
-| `NewPlainRenderer` | `(w io.Writer) *PlainRenderer` | Creates a `PlainRenderer` writing to `w` |
-| `NewJSONRenderer` | `(w io.Writer) *JSONRenderer` | Creates a `JSONRenderer` writing to `w` |
-| `NewYAMLRenderer` | `(w io.Writer) *YAMLRenderer` | Creates a `YAMLRenderer` writing to `w` |
-| `NewTableRenderer` | `(w io.Writer) *TableRenderer` | Creates a `TableRenderer` writing to `w` |
-| `NewCompactRenderer` | `(w io.Writer) *CompactRenderer` | Creates a `CompactRenderer` writing to `w` |
+| Symbol | Description |
+|--------|-------------|
+| `NewColoredRenderer` | Creates a `ColoredRenderer` |
+| `NewPlainRenderer` | Creates a `PlainRenderer` |
+| `NewJSONRenderer` | Creates a `JSONRenderer` |
+| `NewYAMLRenderer` | Creates a `YAMLRenderer` |
+| `NewTableRenderer` | Creates a `TableRenderer` |
+| `NewCompactRenderer` | Creates a `CompactRenderer` |
 
 ---
 
 ## resource
-
-Import: `github.com/rmkohlman/MaestroSDK/resource`
 
 Full documentation: [resource](resource.md)
 
@@ -143,51 +137,49 @@ Full documentation: [resource](resource.md)
 
 | Symbol | Kind | Description |
 |--------|------|-------------|
-| `Resource` | interface | `GetKind() string`, `GetName() string`, `Validate() error` |
+| `Resource` | interface | `GetKind()`, `GetName()`, `Validate()` |
 | `Handler` | interface | CRUD for a single resource kind: `Kind`, `Apply`, `Get`, `List`, `Delete`, `ToYAML` |
 
 ### Types
 
 | Symbol | Kind | Description |
 |--------|------|-------------|
-| `Context` | struct | Dependency container for handlers: `DataStore any`, `PluginStore any`, `ThemeStore any`, `ConfigDir string` |
+| `Context` | struct | Dependency container for handlers: `DataStore`, `PluginStore`, `ThemeStore`, `ConfigDir` |
 | `KindHeader` | struct | Used internally to detect `Kind` from YAML before full parsing |
 | `ResourceList` | struct | Ordered collection of `Resource` values with dependency-aware sorting |
 
 ### Registry Functions
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `Register` | `(h Handler)` | Registers a handler for its `Kind()` |
-| `Apply` | `(ctx Context, data []byte, source string) (Resource, error)` | Parses YAML, resolves handler, calls `Apply` |
-| `Get` | `(ctx Context, kind, name string) (Resource, error)` | Retrieves one resource by kind and name |
-| `List` | `(ctx Context, kind string) ([]Resource, error)` | Lists all resources of a kind |
-| `Delete` | `(ctx Context, kind, name string) error` | Deletes a resource by kind and name |
-| `ToYAML` | `(ctx Context, kind, name string) ([]byte, error)` | Serializes a resource to YAML |
-| `GetHandler` | `(kind string) (Handler, error)` | Returns the registered handler for a kind |
-| `RegisteredKinds` | `() []string` | Returns all registered kind names, sorted |
+| Symbol | Description |
+|--------|-------------|
+| `Register` | Registers a handler for its `Kind()` |
+| `Apply` | Parses YAML, resolves handler, calls `Apply` |
+| `Get` | Retrieves one resource by kind and name |
+| `List` | Lists all resources of a kind |
+| `Delete` | Deletes a resource by kind and name |
+| `ToYAML` | Serializes a resource to YAML |
+| `GetHandler` | Returns the registered handler for a kind |
+| `RegisteredKinds` | Returns all registered kind names, sorted |
 
 ### ResourceList Functions
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `NewResourceList` | `(items []Resource) *ResourceList` | Creates a `ResourceList` from a slice |
-| `(rl *ResourceList) DependencyOrder` | `(depFn func(Resource) []string) ([]Resource, error)` | Topologically sorts resources by dependency |
-| `(rl *ResourceList) Items` | `() []Resource` | Returns the underlying slice |
+| Symbol | Description |
+|--------|-------------|
+| `NewResourceList` | Creates a `ResourceList` from a slice |
+| `DependencyOrder` | Topologically sorts resources by dependency |
+| `Items` | Returns the underlying slice |
 
 ### Generic DataStore Helpers
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `DataStoreAs[T]` | `(ctx Context) (T, error)` | Type-asserts `ctx.DataStore` to `T` |
-| `PluginStoreAs[T]` | `(ctx Context) (T, error)` | Type-asserts `ctx.PluginStore` to `T` |
-| `ThemeStoreAs[T]` | `(ctx Context) (T, error)` | Type-asserts `ctx.ThemeStore` to `T` |
+| Symbol | Description |
+|--------|-------------|
+| `DataStoreAs` | Type-asserts `ctx.DataStore` to a given type |
+| `PluginStoreAs` | Type-asserts `ctx.PluginStore` to a given type |
+| `ThemeStoreAs` | Type-asserts `ctx.ThemeStore` to a given type |
 
 ---
 
 ## paths
-
-Import: `github.com/rmkohlman/MaestroSDK/paths`
 
 Full documentation: [paths](paths.md)
 
@@ -208,10 +200,10 @@ Full documentation: [paths](paths.md)
 
 ### Constructors
 
-| Symbol | Signature | Description |
-|--------|-----------|-------------|
-| `New` | `(homeDir string) *PathConfig` | Creates a `PathConfig` for `homeDir`; panics if empty |
-| `Default` | `() (*PathConfig, error)` | Creates a `PathConfig` using `os.UserHomeDir()` |
+| Symbol | Description |
+|--------|-------------|
+| `New` | Creates a `PathConfig` for a given home directory; panics if empty |
+| `Default` | Creates a `PathConfig` using `os.UserHomeDir()` |
 
 ### PathConfig Methods — DVM Root
 
@@ -231,31 +223,31 @@ Full documentation: [paths](paths.md)
 
 ### PathConfig Methods — Workspaces
 
-| Method | Signature | Returns |
-|--------|-----------|---------|
-| `WorkspacesDir()` | `() string` | `{root}/workspaces` |
-| `WorkspacePath()` | `(slug string) string` | `{root}/workspaces/{slug}` |
-| `WorkspaceRepoPath()` | `(slug string) string` | `{root}/workspaces/{slug}/repo` |
-| `WorkspaceVolumePath()` | `(slug string) string` | `{root}/workspaces/{slug}/volume` |
-| `WorkspaceConfigPath()` | `(slug string) string` | `{root}/workspaces/{slug}/.dvm` |
+| Method | Returns |
+|--------|---------|
+| `WorkspacesDir()` | `{root}/workspaces` |
+| `WorkspacePath(slug)` | `{root}/workspaces/{slug}` |
+| `WorkspaceRepoPath(slug)` | `{root}/workspaces/{slug}/repo` |
+| `WorkspaceVolumePath(slug)` | `{root}/workspaces/{slug}/volume` |
+| `WorkspaceConfigPath(slug)` | `{root}/workspaces/{slug}/.dvm` |
 
 ### PathConfig Methods — Git and Build
 
-| Method | Signature | Returns |
-|--------|-----------|---------|
-| `ReposDir()` | `() string` | `{root}/repos` |
-| `BuildStagingDir()` | `(appName string) string` | `{root}/build-staging/{appName}` |
+| Method | Returns |
+|--------|---------|
+| `ReposDir()` | `{root}/repos` |
+| `BuildStagingDir(appName)` | `{root}/build-staging/{appName}` |
 
 ### PathConfig Methods — Registry
 
-| Method | Signature | Returns |
-|--------|-----------|---------|
-| `RegistryDir()` | `(name string) string` | `{root}/registries/{name}` |
-| `RegistryStorage()` | `() string` | `{root}/registry` |
-| `AthensStorage()` | `() string` | `{root}/athens` |
-| `VerdaccioStorage()` | `() string` | `{root}/verdaccio` |
-| `DevpiStorage()` | `() string` | `{root}/devpi` |
-| `SquidDir()` | `() string` | `{root}/squid` |
+| Method | Returns |
+|--------|---------|
+| `RegistryDir(name)` | `{root}/registries/{name}` |
+| `RegistryStorage()` | `{root}/registry` |
+| `AthensStorage()` | `{root}/athens` |
+| `VerdaccioStorage()` | `{root}/verdaccio` |
+| `DevpiStorage()` | `{root}/devpi` |
+| `SquidDir()` | `{root}/squid` |
 
 ### PathConfig Methods — NVP
 

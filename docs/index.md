@@ -6,14 +6,6 @@ Shared SDK packages for the DevOpsMaestro ecosystem.
 
 MaestroSDK is a standalone Go module (`github.com/rmkohlman/MaestroSDK`) that provides shared infrastructure packages used across the DevOpsMaestro toolchain. It is designed to be imported by `dvm`, `nvp`, `dvt`, and any other tools in the ecosystem that need common color, rendering, resource, or path abstractions.
 
-## Installation
-
-```bash
-go get github.com/rmkohlman/MaestroSDK
-```
-
-**Go version requirement:** 1.25.6 or later.
-
 ## Packages
 
 | Package | Import Path | Description |
@@ -36,71 +28,19 @@ go get github.com/rmkohlman/MaestroSDK
 
 ### colors
 
-Inject a theme-aware `ColorProvider` into a `context.Context` and retrieve it anywhere downstream:
-
-```go
-import "github.com/rmkohlman/MaestroSDK/colors"
-
-// In a CLI command (e.g. cobra PersistentPreRunE)
-ctx, err := colors.InitColorProviderForCommand(ctx, paletteProvider, noColorFlag)
-
-// Anywhere downstream
-provider := colors.FromContextOrDefault(ctx)
-successColor := provider.Success()  // e.g. "#9ece6a"
-```
+Inject a theme-aware `ColorProvider` into a `context.Context` and retrieve it anywhere downstream. Call `colors.InitColorProviderForCommand` in a CLI command's setup to wire up the provider (respecting `--no-color` and the `NO_COLOR` env var), then use `colors.FromContextOrDefault` anywhere downstream to access colors.
 
 ### render
 
-Prepare structured data in your command and pass it to the global `Output` function:
-
-```go
-import "github.com/rmkohlman/MaestroSDK/render"
-
-data := render.TableData{
-    Headers: []string{"NAME", "STATUS", "APP"},
-    Rows: [][]string{
-        {"dev", "running", "myapp"},
-        {"staging", "stopped", "myapp"},
-    },
-}
-
-err := render.OutputWithContext(ctx, data, render.Options{
-    Type:  render.TypeTable,
-    Title: "Workspaces",
-})
-```
-
-The renderer is selected by: `DVM_RENDER` environment variable, or the `-r`/`--render` flag value passed to `OutputWithContextAndRenderer`.
+Prepare structured data in your command (e.g., `render.TableData` with headers and rows) and pass it to `render.OutputWithContext`. The renderer is selected by the `DVM_RENDER` environment variable or an explicit override flag.
 
 ### resource
 
-Register a handler once at startup, then use package-level functions to apply, get, list, and delete resources:
-
-```go
-import "github.com/rmkohlman/MaestroSDK/resource"
-
-// Registration (typically in an init() or startup function)
-resource.Register(&MyHandler{})
-
-// Apply YAML from any source
-res, err := resource.Apply(ctx, yamlData, "source.yaml")
-
-// List all of a kind
-items, err := resource.List(ctx, "MyKind")
-```
+Register a handler once at startup, then use the package-level `Apply`, `Get`, `List`, and `Delete` functions to manage resources by kind and name.
 
 ### paths
 
-```go
-import "github.com/rmkohlman/MaestroSDK/paths"
-
-pc, err := paths.Default()           // uses os.UserHomeDir()
-// pc := paths.New("/tmp/fakehome")  // deterministic alternative for tests
-
-dbPath  := pc.Database()             // ~/.devopsmaestro/devopsmaestro.db
-wsPath  := pc.WorkspacePath("myws") // ~/.devopsmaestro/workspaces/myws
-nvpRoot := pc.NVPRoot()              // ~/.nvp
-```
+Call `paths.Default()` to get a `PathConfig` rooted at the user's home directory. All well-known DevOpsMaestro filesystem locations are available as methods: `Database()`, `WorkspacePath(slug)`, `NVPRoot()`, and more. In tests, use `paths.New("/tmp/fakehome")` for a fully deterministic, OS-independent path config.
 
 ## Part of the DevOpsMaestro Ecosystem
 
