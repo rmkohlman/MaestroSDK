@@ -104,15 +104,17 @@ func (r *PlainRenderer) renderTable(w io.Writer, t TableData) error {
 		return nil
 	}
 
-	// Calculate column widths
+	// Calculate column widths using visible display width (strips ANSI codes).
 	widths := make([]int, len(t.Headers))
 	for i, h := range t.Headers {
-		widths[i] = len(h)
+		widths[i] = displayWidth(h)
 	}
 	for _, row := range t.Rows {
 		for i, cell := range row {
-			if i < len(widths) && len(cell) > widths[i] {
-				widths[i] = len(cell)
+			if i < len(widths) {
+				if dw := displayWidth(cell); dw > widths[i] {
+					widths[i] = dw
+				}
 			}
 		}
 	}
@@ -129,11 +131,11 @@ func (r *PlainRenderer) renderTable(w io.Writer, t TableData) error {
 	}
 	fmt.Fprintln(w)
 
-	// Print rows
+	// Print rows — use padToWidth so ANSI codes don't throw off alignment.
 	for _, row := range t.Rows {
 		for i, cell := range row {
 			if i < len(widths) {
-				fmt.Fprintf(w, "%-*s  ", widths[i], cell)
+				fmt.Fprintf(w, "%s  ", padToWidth(cell, widths[i]))
 			}
 		}
 		fmt.Fprintln(w)

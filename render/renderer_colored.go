@@ -217,15 +217,17 @@ func (r *ColoredRenderer) renderTableWithStyles(w io.Writer, t TableData, styles
 		return nil
 	}
 
-	// Calculate column widths
+	// Calculate column widths using visible display width (strips ANSI codes).
 	widths := make([]int, len(t.Headers))
 	for i, h := range t.Headers {
-		widths[i] = len(h)
+		widths[i] = displayWidth(h)
 	}
 	for _, row := range t.Rows {
 		for i, cell := range row {
-			if i < len(widths) && len(cell) > widths[i] {
-				widths[i] = len(cell)
+			if i < len(widths) {
+				if dw := displayWidth(cell); dw > widths[i] {
+					widths[i] = dw
+				}
 			}
 		}
 	}
@@ -233,7 +235,7 @@ func (r *ColoredRenderer) renderTableWithStyles(w io.Writer, t TableData, styles
 	// Print headers
 	var headerParts []string
 	for i, h := range t.Headers {
-		headerParts = append(headerParts, styles.header.Render(fmt.Sprintf("%-*s", widths[i], h)))
+		headerParts = append(headerParts, styles.header.Render(padToWidth(h, widths[i])))
 	}
 	fmt.Fprintln(w, strings.Join(headerParts, "   "))
 
@@ -244,12 +246,12 @@ func (r *ColoredRenderer) renderTableWithStyles(w io.Writer, t TableData, styles
 	}
 	fmt.Fprintln(w, strings.Join(sepParts, "   "))
 
-	// Print rows
+	// Print rows — use padToWidth so ANSI codes don't throw off alignment.
 	for _, row := range t.Rows {
 		var cellParts []string
 		for i, cell := range row {
 			if i < len(widths) {
-				cellParts = append(cellParts, fmt.Sprintf("%-*s", widths[i], cell))
+				cellParts = append(cellParts, padToWidth(cell, widths[i]))
 			}
 		}
 		fmt.Fprintln(w, strings.Join(cellParts, "   "))
