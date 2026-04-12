@@ -364,3 +364,130 @@ func TestColoredRenderer_Table_DefaultUsesANSICodes(t *testing.T) {
 	assert.Contains(t, output, "c")
 	assert.Contains(t, output, "f")
 }
+
+// ---------------------------------------------------------------------------
+// Column constraint tests (Issue #258)
+// ---------------------------------------------------------------------------
+
+func TestColoredRenderer_Table_ColumnConstraints(t *testing.T) {
+	r := NewColoredRenderer()
+	var buf bytes.Buffer
+
+	longURL := "git@gitlab.ana.shawcable.net:access-network-automation/beansng/beans-ray-actorkit.git"
+	data := TableData{
+		Headers: []string{"NAME", "URL", "STATUS"},
+		Rows: [][]string{
+			{"short-name", longURL, "active"},
+			{"another", "https://github.com/org/repo.git", "synced"},
+		},
+		Constraints: []ColumnConstraint{
+			{MaxWidth: 15, Truncate: TruncEnd},
+			{MaxWidth: 30, Truncate: TruncMiddle},
+			{}, // no constraint on STATUS
+		},
+	}
+
+	// Ensure NO_COLOR so we can inspect raw output easier
+	os.Setenv("NO_COLOR", "1")
+	defer os.Unsetenv("NO_COLOR")
+
+	err := r.Render(&buf, data, Options{Type: TypeTable})
+	require.NoError(t, err)
+
+	output := buf.String()
+
+	// The long URL should be middle-truncated (not appear in full)
+	assert.NotContains(t, output, longURL, "full URL should not appear — should be truncated")
+
+	// The truncated URL should contain "..." in the middle
+	assert.Contains(t, output, "...", "truncated URL should contain ellipsis")
+
+	// STATUS column should be unaffected
+	assert.Contains(t, output, "active")
+	assert.Contains(t, output, "synced")
+
+	// Verify the URL truncation result fits in 30 chars
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		if strings.Contains(stripped, "git@gitlab") {
+			// The cell containing the URL should have been truncated
+			assert.NotContains(t, stripped, "beansng", "middle of URL should be removed")
+			break
+		}
+	}
+}
+
+func TestColoredRenderer_Table_ConstraintsBackwardCompatible(t *testing.T) {
+	r := NewColoredRenderer()
+
+	// Render WITHOUT constraints
+	var buf1 bytes.Buffer
+	data1 := TableData{
+		Headers: []string{"A", "B"},
+		Rows:    [][]string{{"hello", "world"}},
+	}
+
+	// Render WITH nil constraints (same thing)
+	var buf2 bytes.Buffer
+	data2 := TableData{
+		Headers:     []string{"A", "B"},
+		Rows:        [][]string{{"hello", "world"}},
+		Constraints: nil,
+	}
+
+	// Ensure NO_COLOR for deterministic comparison
+	os.Setenv("NO_COLOR", "1")
+	defer os.Unsetenv("NO_COLOR")
+
+	err1 := r.Render(&buf1, data1, Options{Type: TypeTable})
+	require.NoError(t, err1)
+
+	err2 := r.Render(&buf2, data2, Options{Type: TypeTable})
+	require.NoError(t, err2)
+
+	// Output should be identical
+	assert.Equal(t, buf1.String(), buf2.String(),
+		"nil Constraints should produce identical output to missing Constraints")
+}
+
+func TestColoredRenderer_Table_MinWidthConstraint(t *testing.T) {
+	r := NewColoredRenderer()
+	var buf bytes.Buffer
+
+	data := TableData{
+		Headers: []string{"X", "Y"},
+		Rows:    [][]string{{"a", "b"}},
+		Constraints: []ColumnConstraint{
+			{MinWidth: 20}, // force column X to be at least 20 wide
+			{},
+		},
+	}
+
+	os.Setenv("NO_COLOR", "1")
+	defer os.Unsetenv("NO_COLOR")
+
+	err := r.Render(&buf, data, Options{Type: TypeTable})
+	require.NoError(t, err)
+
+	output := buf.String()
+	lines := strings.Split(output, "\n")
+
+	// Find the header separator line — its segments tell us column widths.
+	// The top border line uses ─ characters; count them for the first column.
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		if strings.Contains(stripped, "─") && strings.Contains(stripped, "┌") {
+			// The first segment between ┌ and ┬ should be at least 20 + 2 (padding) = 22 chars of ─
+			parts := strings.Split(stripped, "┬")
+			if len(parts) >= 1 {
+				firstSeg := strings.TrimPrefix(parts[0], "┌")
+				// Count ─ characters
+				dashCount := strings.Count(firstSeg, "─")
+				assert.GreaterOrEqual(t, dashCount, 22,
+					"first column should be at least 20 wide (+ 2 padding)")
+			}
+			break
+		}
+	}
+}

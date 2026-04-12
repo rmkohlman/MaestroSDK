@@ -237,6 +237,21 @@ func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer
 		}
 	}
 
+	// Apply column constraints if provided.
+	if len(t.Constraints) > 0 {
+		for i, c := range t.Constraints {
+			if i >= len(widths) {
+				break
+			}
+			if c.MaxWidth > 0 && widths[i] > c.MaxWidth {
+				widths[i] = c.MaxWidth
+			}
+			if c.MinWidth > 0 && widths[i] < c.MinWidth {
+				widths[i] = c.MinWidth
+			}
+		}
+	}
+
 	// Border characters
 	const (
 		vertBorder = "│"
@@ -282,7 +297,7 @@ func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer
 	fmt.Fprintln(w, hRule(topLeft, topTee, topRight))
 
 	// --- Header row ---
-	r.renderStyledRow(w, t.Headers, widths, bc, tc, tc.headerBG, tc.headerBGCode, styles.header, useColor)
+	r.renderStyledRow(w, t.Headers, widths, bc, tc, tc.headerBG, tc.headerBGCode, styles.header, useColor, t.Constraints)
 
 	// --- Header separator ---
 	fmt.Fprintln(w, hRule(midLeft, midCross, midRight))
@@ -298,7 +313,7 @@ func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer
 			bg = tc.oddRowBG
 			bgCode = tc.oddRowBGCode
 		}
-		r.renderStyledRow(w, row, widths, bc, tc, bg, bgCode, styles.value, isOddRow && useColor)
+		r.renderStyledRow(w, row, widths, bc, tc, bg, bgCode, styles.value, isOddRow && useColor, t.Constraints)
 	}
 
 	// --- Bottom border ---
@@ -383,6 +398,7 @@ func (r *ColoredRenderer) tableColors(ctx context.Context) tableColorScheme {
 // bgCode is the ANSI code for the background (used in ANSI mode).
 // bg is the RGB triplet (used in truecolor mode).
 // applyBG controls whether any background is emitted for this row.
+// constraints provides optional per-column truncation rules (may be nil).
 func (r *ColoredRenderer) renderStyledRow(
 	w io.Writer,
 	cells []string,
@@ -393,6 +409,7 @@ func (r *ColoredRenderer) renderStyledRow(
 	bgCode string,
 	cellStyle lipgloss.Style,
 	applyBG bool,
+	constraints []ColumnConstraint,
 ) {
 	var buf strings.Builder
 
@@ -400,7 +417,14 @@ func (r *ColoredRenderer) renderStyledRow(
 		if i >= len(widths) {
 			break
 		}
-		padded := padToWidth(cell, widths[i])
+
+		// Truncate cell if column constraint requires it.
+		truncated := cell
+		if i < len(constraints) && constraints[i].MaxWidth > 0 && displayWidth(cell) > constraints[i].MaxWidth {
+			truncated = ApplyTruncation(stripANSI(cell), constraints[i].MaxWidth, constraints[i].Truncate)
+		}
+
+		padded := padToWidth(truncated, widths[i])
 
 		// Border + space + cell content + space
 		buf.WriteString(bc("│"))

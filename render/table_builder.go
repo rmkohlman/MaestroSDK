@@ -53,8 +53,9 @@ func padToWidth(cell string, targetWidth int) string {
 //	}
 //	return render.OutputWith(format, tb.Build(), render.Options{Type: render.TypeTable})
 type TableBuilder struct {
-	headers []string
-	rows    [][]string
+	headers     []string
+	rows        [][]string
+	constraints []ColumnConstraint
 }
 
 // NewTableBuilder creates a new TableBuilder with the given column headers.
@@ -72,11 +73,19 @@ func (tb *TableBuilder) AddRow(values ...string) *TableBuilder {
 	return tb
 }
 
+// SetConstraints sets column constraints for the table.
+// The number of constraints should match the number of headers.
+func (tb *TableBuilder) SetConstraints(constraints ...ColumnConstraint) *TableBuilder {
+	tb.constraints = constraints
+	return tb
+}
+
 // Build returns the constructed TableData.
 func (tb *TableBuilder) Build() TableData {
 	return TableData{
-		Headers: tb.headers,
-		Rows:    tb.rows,
+		Headers:     tb.headers,
+		Rows:        tb.rows,
+		Constraints: tb.constraints,
 	}
 }
 
@@ -96,6 +105,42 @@ func Truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// TruncateMiddle shortens s by preserving the start and end of the string and
+// replacing the middle with "...". This is useful for URLs and file paths where
+// both the prefix (protocol/host) and suffix (filename) carry meaning.
+//
+// Example: "git@gitlab.ana.shawcable.net:access-network-automation/beansng/beans-ray-actorkit.git"
+//
+//	→ "git@gitlab.ana...actorkit.git"  (with maxLen=30)
+func TruncateMiddle(s string, maxLen int) string {
+	if maxLen < 5 || len(s) <= maxLen {
+		return s
+	}
+	// Split the budget evenly between start and end, minus the 3-char "..."
+	half := (maxLen - 3) / 2
+	// When maxLen-3 is odd, give the extra char to the end portion
+	endLen := maxLen - 3 - half
+	return s[:half] + "..." + s[len(s)-endLen:]
+}
+
+// ApplyTruncation dispatches to the appropriate truncation function based on
+// the given strategy. If strategy is TruncateNone or maxLen <= 0, the original
+// string is returned unchanged.
+func ApplyTruncation(s string, maxLen int, strategy TruncateStrategy) string {
+	if maxLen <= 0 {
+		return s
+	}
+	switch strategy {
+	case TruncEnd:
+		return Truncate(s, maxLen)
+	case TruncMiddle:
+		return TruncateMiddle(s, maxLen)
+	default:
+		// TruncNone — return as-is
+		return s
+	}
 }
 
 // hexToRGB parses a hex color string (e.g., "#7aa2f7" or "7aa2f7") into

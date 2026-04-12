@@ -33,11 +33,37 @@ type Renderer interface {
 	SupportsColor() bool
 }
 
+// TruncateStrategy controls how a cell value is shortened when it exceeds the
+// column's MaxWidth. The zero value (TruncNone) means no truncation.
+type TruncateStrategy int
+
+const (
+	// TruncNone disables truncation — the cell value is never shortened.
+	TruncNone TruncateStrategy = iota
+
+	// TruncEnd keeps the beginning of the string and replaces the tail
+	// with "...": "very-long-na..."
+	TruncEnd
+
+	// TruncMiddle preserves the start and end of the string, replacing
+	// the middle with "...": "gitlab.ana...actorkit.git"
+	TruncMiddle
+)
+
+// ColumnConstraint describes display constraints for a single table column.
+// These are hints from the data producer (e.g., a CLI command) to the renderer.
+type ColumnConstraint struct {
+	MaxWidth int              // 0 = no limit
+	MinWidth int              // 0 = no minimum
+	Truncate TruncateStrategy // how to truncate if over MaxWidth
+}
+
 // TableData represents data that should be rendered as a table.
 // Commands can use this to explicitly structure table data.
 type TableData struct {
-	Headers []string
-	Rows    [][]string
+	Headers     []string
+	Rows        [][]string
+	Constraints []ColumnConstraint // optional, nil = today's behavior (backward compatible)
 }
 
 // ListData represents data that should be rendered as a list.

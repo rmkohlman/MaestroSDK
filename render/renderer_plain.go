@@ -119,9 +119,28 @@ func (r *PlainRenderer) renderTable(w io.Writer, t TableData) error {
 		}
 	}
 
+	// Apply column constraints if provided.
+	if len(t.Constraints) > 0 {
+		for i, c := range t.Constraints {
+			if i >= len(widths) {
+				break
+			}
+			if c.MaxWidth > 0 && widths[i] > c.MaxWidth {
+				widths[i] = c.MaxWidth
+			}
+			if c.MinWidth > 0 && widths[i] < c.MinWidth {
+				widths[i] = c.MinWidth
+			}
+		}
+	}
+
 	// Print headers
 	for i, h := range t.Headers {
-		fmt.Fprintf(w, "%-*s  ", widths[i], h)
+		cell := h
+		if i < len(t.Constraints) && t.Constraints[i].MaxWidth > 0 && displayWidth(h) > t.Constraints[i].MaxWidth {
+			cell = ApplyTruncation(h, t.Constraints[i].MaxWidth, t.Constraints[i].Truncate)
+		}
+		fmt.Fprintf(w, "%-*s  ", widths[i], cell)
 	}
 	fmt.Fprintln(w)
 
@@ -135,7 +154,11 @@ func (r *PlainRenderer) renderTable(w io.Writer, t TableData) error {
 	for _, row := range t.Rows {
 		for i, cell := range row {
 			if i < len(widths) {
-				fmt.Fprintf(w, "%s  ", padToWidth(cell, widths[i]))
+				truncated := cell
+				if i < len(t.Constraints) && t.Constraints[i].MaxWidth > 0 && displayWidth(cell) > t.Constraints[i].MaxWidth {
+					truncated = ApplyTruncation(stripANSI(cell), t.Constraints[i].MaxWidth, t.Constraints[i].Truncate)
+				}
+				fmt.Fprintf(w, "%s  ", padToWidth(truncated, widths[i]))
 			}
 		}
 		fmt.Fprintln(w)

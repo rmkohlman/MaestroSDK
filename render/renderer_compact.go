@@ -99,10 +99,29 @@ func (r *CompactRenderer) renderCompactTableWithStyles(w io.Writer, t TableData,
 		}
 	}
 
+	// Apply column constraints if provided.
+	if len(t.Constraints) > 0 {
+		for i, c := range t.Constraints {
+			if i >= len(widths) {
+				break
+			}
+			if c.MaxWidth > 0 && widths[i] > c.MaxWidth {
+				widths[i] = c.MaxWidth
+			}
+			if c.MinWidth > 0 && widths[i] < c.MinWidth {
+				widths[i] = c.MinWidth
+			}
+		}
+	}
+
 	// Headers - muted style, no separator
 	var headerParts []string
 	for i, h := range t.Headers {
-		headerParts = append(headerParts, styles.muted.Render(padToWidth(h, widths[i])))
+		cell := h
+		if i < len(t.Constraints) && t.Constraints[i].MaxWidth > 0 && displayWidth(h) > t.Constraints[i].MaxWidth {
+			cell = ApplyTruncation(h, t.Constraints[i].MaxWidth, t.Constraints[i].Truncate)
+		}
+		headerParts = append(headerParts, styles.muted.Render(padToWidth(cell, widths[i])))
 	}
 	fmt.Fprintln(w, strings.Join(headerParts, " "))
 
@@ -111,7 +130,11 @@ func (r *CompactRenderer) renderCompactTableWithStyles(w io.Writer, t TableData,
 		var cellParts []string
 		for i, cell := range row {
 			if i < len(widths) {
-				cellParts = append(cellParts, padToWidth(cell, widths[i]))
+				truncated := cell
+				if i < len(t.Constraints) && t.Constraints[i].MaxWidth > 0 && displayWidth(cell) > t.Constraints[i].MaxWidth {
+					truncated = ApplyTruncation(stripANSI(cell), t.Constraints[i].MaxWidth, t.Constraints[i].Truncate)
+				}
+				cellParts = append(cellParts, padToWidth(truncated, widths[i]))
 			}
 		}
 		fmt.Fprintln(w, strings.Join(cellParts, " "))

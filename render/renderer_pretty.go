@@ -82,6 +82,39 @@ func (r *PrettyRenderer) resolveStyles(ctx context.Context) (header, cell, borde
 func (r *PrettyRenderer) renderBorderedTable(ctx context.Context, w io.Writer, td TableData) error {
 	headerStyle, cellStyle, borderStyle := r.resolveStyles(ctx)
 
+	// Pre-truncate cell values if constraints are provided.
+	// lipgloss/table manages its own column widths, so we truncate the data
+	// before handing it off.
+	headers := td.Headers
+	rows := td.Rows
+	if len(td.Constraints) > 0 {
+		// Truncate headers
+		truncHeaders := make([]string, len(headers))
+		for i, h := range headers {
+			if i < len(td.Constraints) && td.Constraints[i].MaxWidth > 0 && len(h) > td.Constraints[i].MaxWidth {
+				truncHeaders[i] = ApplyTruncation(h, td.Constraints[i].MaxWidth, td.Constraints[i].Truncate)
+			} else {
+				truncHeaders[i] = h
+			}
+		}
+		headers = truncHeaders
+
+		// Truncate row cells
+		truncRows := make([][]string, len(rows))
+		for ri, row := range rows {
+			truncRow := make([]string, len(row))
+			for ci, cell := range row {
+				if ci < len(td.Constraints) && td.Constraints[ci].MaxWidth > 0 && len(cell) > td.Constraints[ci].MaxWidth {
+					truncRow[ci] = ApplyTruncation(cell, td.Constraints[ci].MaxWidth, td.Constraints[ci].Truncate)
+				} else {
+					truncRow[ci] = cell
+				}
+			}
+			truncRows[ri] = truncRow
+		}
+		rows = truncRows
+	}
+
 	// Build lipgloss styles
 	hdrLipgloss := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(headerStyle.FG)).
@@ -97,8 +130,8 @@ func (r *PrettyRenderer) renderBorderedTable(ctx context.Context, w io.Writer, t
 
 	// Create the table
 	t := table.New().
-		Headers(td.Headers...).
-		Rows(td.Rows...).
+		Headers(headers...).
+		Rows(rows...).
 		Border(lipgloss.NormalBorder()).
 		BorderStyle(borderLipgloss).
 		StyleFunc(func(row, col int) lipgloss.Style {
