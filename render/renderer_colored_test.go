@@ -202,13 +202,18 @@ func TestColoredRenderer_Table_AlternatingRowBackgrounds(t *testing.T) {
 	}
 	require.Len(t, dataLines, 4, "should have 4 data rows")
 
-	// Odd rows (index 1, 3) should have background ANSI code (48;2;)
-	assert.Contains(t, dataLines[1], "\x1b[48;2;", "odd row should have background color")
-	assert.Contains(t, dataLines[3], "\x1b[48;2;", "odd row should have background color")
+	// Without ColorProvider, default mode uses ANSI codes (not truecolor)
+	// Odd rows (index 1, 3) should have ANSI background code
+	assert.Contains(t, dataLines[1], "\x1b[100m", "odd row should have ANSI background color")
+	assert.Contains(t, dataLines[3], "\x1b[100m", "odd row should have ANSI background color")
 
 	// Even rows (index 0, 2) should NOT have background ANSI code
-	assert.NotContains(t, dataLines[0], "\x1b[48;2;", "even row should not have background color")
-	assert.NotContains(t, dataLines[2], "\x1b[48;2;", "even row should not have background color")
+	assert.NotContains(t, dataLines[0], "\x1b[100m", "even row should not have background color")
+	assert.NotContains(t, dataLines[2], "\x1b[100m", "even row should not have background color")
+
+	// No truecolor codes should be present without a ColorProvider
+	assert.NotContains(t, dataLines[1], "\x1b[48;2;", "default mode should not use truecolor")
+	assert.NotContains(t, dataLines[3], "\x1b[48;2;", "default mode should not use truecolor")
 }
 
 func TestColoredRenderer_Table_HeaderHasBackground(t *testing.T) {
@@ -225,7 +230,7 @@ func TestColoredRenderer_Table_HeaderHasBackground(t *testing.T) {
 	output := buf.String()
 	lines := strings.Split(output, "\n")
 
-	// Header line should contain background color (48;2;)
+	// Header line should contain ANSI background code (not truecolor in default mode)
 	var headerLine string
 	for _, line := range lines {
 		if strings.Contains(line, "NAME") && strings.Contains(line, "STATUS") {
@@ -234,7 +239,8 @@ func TestColoredRenderer_Table_HeaderHasBackground(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, headerLine, "should find header line")
-	assert.Contains(t, headerLine, "\x1b[48;2;", "header should have background color")
+	assert.Contains(t, headerLine, "\x1b[100m", "header should have ANSI background color")
+	assert.NotContains(t, headerLine, "\x1b[48;2;", "default mode should not use truecolor for header")
 }
 
 func TestColoredRenderer_Table_NOCOLORDisablesBackgrounds(t *testing.T) {
@@ -256,8 +262,10 @@ func TestColoredRenderer_Table_NOCOLORDisablesBackgrounds(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	// NO_COLOR should prevent background ANSI codes (48;2;)
-	assert.NotContains(t, output, "\x1b[48;2;", "NO_COLOR should disable background colors")
+	// NO_COLOR should prevent all color ANSI codes
+	assert.NotContains(t, output, "\x1b[48;2;", "NO_COLOR should disable truecolor backgrounds")
+	assert.NotContains(t, output, "\x1b[100m", "NO_COLOR should disable ANSI backgrounds")
+	assert.NotContains(t, output, "\x1b[90m", "NO_COLOR should disable ANSI border colors")
 	// Should still have border characters (structural, not color)
 	assert.Contains(t, output, "│", "borders should still appear")
 	assert.Contains(t, output, "─", "horizontal rules should still appear")
@@ -285,6 +293,14 @@ func TestColoredRenderer_Table_WithColorProvider(t *testing.T) {
 	assert.Contains(t, output, "key1")
 	assert.Contains(t, output, "val2")
 	assert.Contains(t, output, "│")
+
+	// With a ColorProvider, should use truecolor (38;2; for border, 48;2; for backgrounds)
+	assert.Contains(t, output, "38;2;", "with ColorProvider, borders should use truecolor")
+	assert.Contains(t, output, "48;2;", "with ColorProvider, backgrounds should use truecolor")
+
+	// Should NOT contain ANSI-only codes (those are for default mode)
+	assert.NotContains(t, output, "\x1b[100m", "with ColorProvider, should not use ANSI fallback bg")
+	assert.NotContains(t, output, "\x1b[90m", "with ColorProvider, should not use ANSI fallback border")
 }
 
 func TestColoredRenderer_Table_ContentPreserved(t *testing.T) {
@@ -311,4 +327,40 @@ func TestColoredRenderer_Table_ContentPreserved(t *testing.T) {
 	assert.Contains(t, output, "staging")
 	assert.Contains(t, output, "3")
 	assert.Contains(t, output, "5")
+}
+
+func TestColoredRenderer_Table_DefaultUsesANSICodes(t *testing.T) {
+	r := NewColoredRenderer()
+	var buf bytes.Buffer
+	data := TableData{
+		Headers: []string{"COL1", "COL2"},
+		Rows: [][]string{
+			{"a", "b"},
+			{"c", "d"},
+			{"e", "f"},
+		},
+	}
+
+	// Render without ColorProvider (default mode)
+	err := r.Render(&buf, data, Options{Type: TypeTable})
+	require.NoError(t, err)
+
+	output := buf.String()
+
+	// Default mode should use standard ANSI codes, NOT truecolor
+	assert.NotContains(t, output, "\x1b[48;2;", "default mode must not use truecolor backgrounds")
+	assert.NotContains(t, output, "\x1b[38;2;", "default mode must not use truecolor foregrounds")
+
+	// Should contain ANSI border color code
+	assert.Contains(t, output, "\x1b[90m", "default borders should use bright black fg (ANSI 90)")
+
+	// Header and odd rows should use bright black background
+	assert.Contains(t, output, "\x1b[100m", "default header/odd rows should use bright black bg (ANSI 100)")
+
+	// Should still have box-drawing characters and data
+	assert.Contains(t, output, "┌")
+	assert.Contains(t, output, "│")
+	assert.Contains(t, output, "COL1")
+	assert.Contains(t, output, "c")
+	assert.Contains(t, output, "f")
 }

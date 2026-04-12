@@ -257,7 +257,10 @@ func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer
 		if !useColor {
 			return ch
 		}
-		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", tc.borderR, tc.borderG, tc.borderB, ch)
+		if tc.truecolor {
+			return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", tc.borderR, tc.borderG, tc.borderB, ch)
+		}
+		return fmt.Sprintf("%s%s\x1b[0m", tc.borderCode, ch)
 	}
 
 	// Helper: build a horizontal rule (top, middle, or bottom)
@@ -279,7 +282,7 @@ func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer
 	fmt.Fprintln(w, hRule(topLeft, topTee, topRight))
 
 	// --- Header row ---
-	r.renderStyledRow(w, t.Headers, widths, bc, useColor, tc.headerBG, styles.header, useColor)
+	r.renderStyledRow(w, t.Headers, widths, bc, tc, tc.headerBG, tc.headerBGCode, styles.header, useColor)
 
 	// --- Header separator ---
 	fmt.Fprintln(w, hRule(midLeft, midCross, midRight))
@@ -287,12 +290,15 @@ func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer
 	// --- Data rows with alternating backgrounds ---
 	for rowIdx, row := range t.Rows {
 		var bg [3]int
-		if useColor && rowIdx%2 == 0 {
+		var bgCode string
+		isOddRow := rowIdx%2 == 1
+		if useColor && !isOddRow {
 			bg = tc.evenRowBG
 		} else if useColor {
 			bg = tc.oddRowBG
+			bgCode = tc.oddRowBGCode
 		}
-		r.renderStyledRow(w, row, widths, bc, useColor, bg, styles.value, rowIdx%2 == 1 && useColor)
+		r.renderStyledRow(w, row, widths, bc, tc, bg, bgCode, styles.value, isOddRow && useColor)
 	}
 
 	// --- Bottom border ---
@@ -301,48 +307,55 @@ func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer
 	return nil
 }
 
-// tableColorScheme holds resolved RGB values for table styling.
+// tableColorScheme holds resolved color values for table styling.
+// It supports two modes: ANSI (terminal-relative codes) and truecolor (absolute RGB).
 type tableColorScheme struct {
-	enabled   bool   // false when NO_COLOR is set or colors are disabled
+	enabled   bool // false when NO_COLOR is set or colors are disabled
+	truecolor bool // true = use RGB values; false = use ANSI codes
+
+	// Truecolor fields (used when ColorProvider is available)
 	headerBG  [3]int // header row background
 	oddRowBG  [3]int // odd data rows (zebra stripe)
 	evenRowBG [3]int // even data rows (transparent / no extra bg)
 	borderR   int    // border character RGB
 	borderG   int
 	borderB   int
+
+	// ANSI fields (used for terminal-relative defaults)
+	headerBGCode string // e.g., "\x1b[100m" (bright black bg)
+	oddRowBGCode string // e.g., "\x1b[100m" (bright black bg)
+	borderCode   string // e.g., "\x1b[90m" (bright black fg)
 }
 
 // tableColors resolves table color values from ColorProvider in context,
-// with sensible dark-theme defaults when no provider is available.
+// with sensible terminal-relative defaults when no provider is available.
 func (r *ColoredRenderer) tableColors(ctx context.Context) tableColorScheme {
 	// Check NO_COLOR env var
 	if os.Getenv("NO_COLOR") != "" {
 		return tableColorScheme{enabled: false}
 	}
 
-	// Default palette: Catppuccin Mocha inspired
-	tc := tableColorScheme{
-		enabled:   true,
-		headerBG:  [3]int{49, 50, 68},            // Surface0 — subtle header bg
-		oddRowBG:  [3]int{30, 30, 46},            // Base — very dark zebra stripe
-		evenRowBG: [3]int{0, 0, 0},               // No background (transparent)
-		borderR:   88, borderG: 91, borderB: 112, // Overlay0 — muted border
-	}
-
-	// If a ColorProvider is available, derive colors from it
+	// If a ColorProvider is available, use truecolor (absolute RGB)
 	if provider, ok := colors.FromContext(ctx); ok {
+		tc := tableColorScheme{
+			enabled:   true,
+			truecolor: true,
+			headerBG:  [3]int{49, 50, 68},
+			oddRowBG:  [3]int{30, 30, 46},
+			evenRowBG: [3]int{0, 0, 0},
+			borderR:   88, borderG: 91, borderB: 112,
+		}
+
 		bg := provider.Background()
 		border := provider.Border()
 		highlight := provider.Highlight()
 
 		if r, g, b, ok := hexToRGB(bg); ok {
-			// Odd rows: slightly lighter than background
 			tc.oddRowBG = [3]int{
 				clamp(r + 12),
 				clamp(g + 12),
 				clamp(b + 12),
 			}
-			// Even rows: no background
 			tc.evenRowBG = [3]int{0, 0, 0}
 		}
 		if r, g, b, ok := hexToRGB(highlight); ok {
@@ -353,20 +366,31 @@ func (r *ColoredRenderer) tableColors(ctx context.Context) tableColorScheme {
 			tc.borderG = g
 			tc.borderB = b
 		}
+		return tc
 	}
 
-	return tc
+	// Default: use standard ANSI codes (terminal-relative, adapts to color scheme)
+	return tableColorScheme{
+		enabled:      true,
+		truecolor:    false,
+		headerBGCode: "\x1b[100m", // bright black background
+		oddRowBGCode: "\x1b[100m", // bright black background
+		borderCode:   "\x1b[90m",  // bright black foreground (muted)
+	}
 }
 
 // renderStyledRow writes a single table row with optional background color.
-// applyBG controls whether the background ANSI code is emitted for this row.
+// bgCode is the ANSI code for the background (used in ANSI mode).
+// bg is the RGB triplet (used in truecolor mode).
+// applyBG controls whether any background is emitted for this row.
 func (r *ColoredRenderer) renderStyledRow(
 	w io.Writer,
 	cells []string,
 	widths []int,
 	bc func(string) string,
-	useColor bool,
+	tc tableColorScheme,
 	bg [3]int,
+	bgCode string,
 	cellStyle lipgloss.Style,
 	applyBG bool,
 ) {
@@ -382,7 +406,11 @@ func (r *ColoredRenderer) renderStyledRow(
 		buf.WriteString(bc("│"))
 
 		if applyBG {
-			buf.WriteString(fmt.Sprintf("\x1b[48;2;%d;%d;%dm", bg[0], bg[1], bg[2]))
+			if tc.truecolor {
+				buf.WriteString(fmt.Sprintf("\x1b[48;2;%d;%d;%dm", bg[0], bg[1], bg[2]))
+			} else {
+				buf.WriteString(bgCode)
+			}
 		}
 
 		buf.WriteString(" ")
