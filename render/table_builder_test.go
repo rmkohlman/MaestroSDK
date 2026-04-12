@@ -75,3 +75,54 @@ func TestTruncate(t *testing.T) {
 		})
 	}
 }
+
+func TestHexToRGB(t *testing.T) {
+	tests := []struct {
+		name   string
+		hex    string
+		wantR  int
+		wantG  int
+		wantB  int
+		wantOK bool
+	}{
+		{"with hash", "#7aa2f7", 122, 162, 247, true},
+		{"without hash", "7aa2f7", 122, 162, 247, true},
+		{"black", "#000000", 0, 0, 0, true},
+		{"white", "#ffffff", 255, 255, 255, true},
+		{"empty string", "", 0, 0, 0, false},
+		{"too short", "#fff", 0, 0, 0, false},
+		{"invalid hex", "#gggggg", 0, 0, 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, g, b, ok := hexToRGB(tt.hex)
+			assert.Equal(t, tt.wantOK, ok)
+			if ok {
+				assert.Equal(t, tt.wantR, r)
+				assert.Equal(t, tt.wantG, g)
+				assert.Equal(t, tt.wantB, b)
+			}
+		})
+	}
+}
+
+func TestClamp(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int
+		want int
+	}{
+		{"negative", -10, 0},
+		{"zero", 0, 0},
+		{"mid range", 128, 128},
+		{"max", 255, 255},
+		{"over max", 300, 255},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, clamp(tt.in))
+		})
+	}
+}

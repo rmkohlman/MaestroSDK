@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -183,7 +184,7 @@ func (r *ColoredRenderer) RenderWithContext(ctx context.Context, w io.Writer, da
 	case KeyValueData:
 		return r.renderKeyValueWithStyles(w, v, styles)
 	case TableData:
-		return r.renderTableWithStyles(w, v, styles)
+		return r.renderTableWithStyles(ctx, w, v, styles)
 	case ListData:
 		return r.renderListWithStyles(w, v, styles)
 	case []string:
@@ -211,11 +212,15 @@ func (r *ColoredRenderer) renderKeyValueWithStyles(w io.Writer, kv KeyValueData,
 	return nil
 }
 
-func (r *ColoredRenderer) renderTableWithStyles(w io.Writer, t TableData, styles styles) error {
+func (r *ColoredRenderer) renderTableWithStyles(ctx context.Context, w io.Writer, t TableData, styles styles) error {
 	if len(t.Rows) == 0 {
 		fmt.Fprintln(w, styles.muted.Render("No data"))
 		return nil
 	}
+
+	// Determine table color scheme from context or defaults.
+	tc := r.tableColors(ctx)
+	useColor := tc.enabled
 
 	// Calculate column widths using visible display width (strips ANSI codes).
 	widths := make([]int, len(t.Headers))
@@ -232,32 +237,173 @@ func (r *ColoredRenderer) renderTableWithStyles(w io.Writer, t TableData, styles
 		}
 	}
 
-	// Print headers
-	var headerParts []string
-	for i, h := range t.Headers {
-		headerParts = append(headerParts, styles.header.Render(padToWidth(h, widths[i])))
-	}
-	fmt.Fprintln(w, strings.Join(headerParts, "   "))
+	// Border characters
+	const (
+		vertBorder = "│"
+		horzBorder = "─"
+		topLeft    = "┌"
+		topRight   = "┐"
+		topTee     = "┬"
+		botLeft    = "└"
+		botRight   = "┘"
+		botTee     = "┴"
+		midLeft    = "├"
+		midRight   = "┤"
+		midCross   = "┼"
+	)
 
-	// Print separator
-	var sepParts []string
-	for _, width := range widths {
-		sepParts = append(sepParts, styles.muted.Render(strings.Repeat("─", width)))
+	// Helper: render a border character in muted color
+	bc := func(ch string) string {
+		if !useColor {
+			return ch
+		}
+		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", tc.borderR, tc.borderG, tc.borderB, ch)
 	}
-	fmt.Fprintln(w, strings.Join(sepParts, "   "))
 
-	// Print rows — use padToWidth so ANSI codes don't throw off alignment.
-	for _, row := range t.Rows {
-		var cellParts []string
-		for i, cell := range row {
-			if i < len(widths) {
-				cellParts = append(cellParts, padToWidth(cell, widths[i]))
+	// Helper: build a horizontal rule (top, middle, or bottom)
+	hRule := func(left, mid, right string) string {
+		var parts []string
+		for i, w := range widths {
+			seg := strings.Repeat(horzBorder, w+2) // +2 for cell padding
+			if i == 0 {
+				parts = append(parts, bc(left)+bc(seg))
+			} else {
+				parts = append(parts, bc(mid)+bc(seg))
 			}
 		}
-		fmt.Fprintln(w, strings.Join(cellParts, "   "))
+		parts = append(parts, bc(right))
+		return strings.Join(parts, "")
 	}
 
+	// --- Top border ---
+	fmt.Fprintln(w, hRule(topLeft, topTee, topRight))
+
+	// --- Header row ---
+	r.renderStyledRow(w, t.Headers, widths, bc, useColor, tc.headerBG, styles.header, useColor)
+
+	// --- Header separator ---
+	fmt.Fprintln(w, hRule(midLeft, midCross, midRight))
+
+	// --- Data rows with alternating backgrounds ---
+	for rowIdx, row := range t.Rows {
+		var bg [3]int
+		if useColor && rowIdx%2 == 0 {
+			bg = tc.evenRowBG
+		} else if useColor {
+			bg = tc.oddRowBG
+		}
+		r.renderStyledRow(w, row, widths, bc, useColor, bg, styles.value, rowIdx%2 == 1 && useColor)
+	}
+
+	// --- Bottom border ---
+	fmt.Fprintln(w, hRule(botLeft, botTee, botRight))
+
 	return nil
+}
+
+// tableColorScheme holds resolved RGB values for table styling.
+type tableColorScheme struct {
+	enabled   bool   // false when NO_COLOR is set or colors are disabled
+	headerBG  [3]int // header row background
+	oddRowBG  [3]int // odd data rows (zebra stripe)
+	evenRowBG [3]int // even data rows (transparent / no extra bg)
+	borderR   int    // border character RGB
+	borderG   int
+	borderB   int
+}
+
+// tableColors resolves table color values from ColorProvider in context,
+// with sensible dark-theme defaults when no provider is available.
+func (r *ColoredRenderer) tableColors(ctx context.Context) tableColorScheme {
+	// Check NO_COLOR env var
+	if os.Getenv("NO_COLOR") != "" {
+		return tableColorScheme{enabled: false}
+	}
+
+	// Default palette: Catppuccin Mocha inspired
+	tc := tableColorScheme{
+		enabled:   true,
+		headerBG:  [3]int{49, 50, 68},            // Surface0 — subtle header bg
+		oddRowBG:  [3]int{30, 30, 46},            // Base — very dark zebra stripe
+		evenRowBG: [3]int{0, 0, 0},               // No background (transparent)
+		borderR:   88, borderG: 91, borderB: 112, // Overlay0 — muted border
+	}
+
+	// If a ColorProvider is available, derive colors from it
+	if provider, ok := colors.FromContext(ctx); ok {
+		bg := provider.Background()
+		border := provider.Border()
+		highlight := provider.Highlight()
+
+		if r, g, b, ok := hexToRGB(bg); ok {
+			// Odd rows: slightly lighter than background
+			tc.oddRowBG = [3]int{
+				clamp(r + 12),
+				clamp(g + 12),
+				clamp(b + 12),
+			}
+			// Even rows: no background
+			tc.evenRowBG = [3]int{0, 0, 0}
+		}
+		if r, g, b, ok := hexToRGB(highlight); ok {
+			tc.headerBG = [3]int{r, g, b}
+		}
+		if r, g, b, ok := hexToRGB(border); ok {
+			tc.borderR = r
+			tc.borderG = g
+			tc.borderB = b
+		}
+	}
+
+	return tc
+}
+
+// renderStyledRow writes a single table row with optional background color.
+// applyBG controls whether the background ANSI code is emitted for this row.
+func (r *ColoredRenderer) renderStyledRow(
+	w io.Writer,
+	cells []string,
+	widths []int,
+	bc func(string) string,
+	useColor bool,
+	bg [3]int,
+	cellStyle lipgloss.Style,
+	applyBG bool,
+) {
+	var buf strings.Builder
+
+	for i, cell := range cells {
+		if i >= len(widths) {
+			break
+		}
+		padded := padToWidth(cell, widths[i])
+
+		// Border + space + cell content + space
+		buf.WriteString(bc("│"))
+
+		if applyBG {
+			buf.WriteString(fmt.Sprintf("\x1b[48;2;%d;%d;%dm", bg[0], bg[1], bg[2]))
+		}
+
+		buf.WriteString(" ")
+		// For header rows the cellStyle is styles.header (bold+colored),
+		// for data rows it's styles.value (foreground).
+		if i < len(cells) {
+			// Apply lipgloss style only to the text, not padding
+			styled := cellStyle.Render(padded)
+			buf.WriteString(styled)
+		}
+		buf.WriteString(" ")
+
+		if applyBG {
+			buf.WriteString("\x1b[0m")
+		}
+	}
+
+	// Closing border
+	buf.WriteString(bc("│"))
+
+	fmt.Fprintln(w, buf.String())
 }
 
 func (r *ColoredRenderer) renderListWithStyles(w io.Writer, list ListData, styles styles) error {

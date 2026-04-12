@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"regexp"
 	"unicode/utf8"
 )
@@ -95,4 +96,34 @@ func Truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// hexToRGB parses a hex color string (e.g., "#7aa2f7" or "7aa2f7") into
+// its red, green, blue components. Returns ok=false if parsing fails.
+func hexToRGB(hex string) (r, g, b int, ok bool) {
+	if len(hex) == 0 {
+		return 0, 0, 0, false
+	}
+	if hex[0] == '#' {
+		hex = hex[1:]
+	}
+	if len(hex) != 6 {
+		return 0, 0, 0, false
+	}
+	_, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	return r, g, b, true
+}
+
+// clamp restricts an integer to the 0–255 range for ANSI color values.
+func clamp(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return v
 }
